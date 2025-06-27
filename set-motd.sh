@@ -1,7 +1,7 @@
 #!/bin/sh
 # -----------------------------------------------------------------------------
 # set-motd.sh — Set a unified MOTD with host info and configurable tags.
-# Designed for Alpine Linux (3.17+).
+# Works on most Linux distros (Alpine, Ubuntu, Debian, CentOS, etc.).
 # -----------------------------------------------------------------------------
 
 set -eu
@@ -72,9 +72,28 @@ list_tags() {
 generate_motd() {
     # Gather host info
     HOSTNAME=$(hostname)
-    OS=$(cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)
-    IP=$(ip addr show | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | cut -d'/' -f1 | head -1)
-    UPTIME=$(uptime -p | sed 's/up //')
+    
+    # Get OS info
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        OS="${PRETTY_NAME:-Unknown Linux}"
+    else
+        OS=$(uname -s -r)
+    fi
+    
+    # Get IP address (try ip, then ifconfig, then fallback)
+    IP=""
+    if command -v ip >/dev/null 2>&1; then
+        IP=$(ip addr show | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | cut -d'/' -f1 | head -1)
+    elif command -v ifconfig >/dev/null 2>&1; then
+        IP=$(ifconfig | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | head -1)
+    fi
+    [ -z "$IP" ] && IP="Unknown"
+
+    # Get uptime
+    UPTIME=$(uptime | sed 's/.*up \([^,]*\),.*/\1/' || echo "Unknown")
+
+    # Get tags
     TAGS=$( [ -s "$TAGS_FILE" ] && cat "$TAGS_FILE" | tr '\n' ',' | sed 's/,$//' || echo "none")
 
     # Write MOTD
