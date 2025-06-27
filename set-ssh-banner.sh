@@ -1,7 +1,7 @@
 #!/bin/sh
 # -----------------------------------------------------------------------------
 # set-ssh-banner.sh — Set a pre-login SSH banner with host info and optional tags.
-# Designed for Alpine Linux (3.17+).
+# Works on most Linux distros (Alpine, Ubuntu, Debian, CentOS, etc.).
 # -----------------------------------------------------------------------------
 
 set -eu
@@ -23,18 +23,26 @@ usage() {
     exit 1
 }
 
-# Parse arguments
-MESSAGE="$DEFAULT_MESSAGE"
-INCLUDE_TAGS="false"
-ACTION="enable"
-while [ $# -gt 0 ]; do
-    case "$1" in
-        --message) MESSAGE="$2"; shift 2 ;;
-        --include-tags) INCLUDE_TAGS="true"; shift ;;
-        --disable) ACTION="disable"; shift ;;
-        *) usage ;;
-    esac
-done
+# Detect service management
+restart_ssh() {
+    if command -v systemctl >/dev/null 2>&1; then
+        # systemd (Ubuntu, Debian, CentOS, etc.)
+        systemctl restart sshd || systemctl restart ssh
+    elif command -v rc-service >/dev/null 2>&1; then
+        # openrc (Alpine)
+        rc-service sshd restart
+    else
+        # Fallback: manual restart
+        if [ -f /var/run/sshd.pid ]; then
+            kill -HUP "$(cat /var/run/sshd.pid)" || {
+                echo "⚠️ Failed to restart SSH. Starting new instance."
+                /usr/sbin/sshd
+            }
+        else
+            /usr/sbin/sshd
+        fi
+    fi
+}
 
 # Update sshd_config
 patch_line() {
@@ -60,6 +68,19 @@ generate_banner() {
     chmod 644 "$BANNER_FILE"
 }
 
+# Parse arguments
+MESSAGE="$DEFAULT_MESSAGE"
+INCLUDE_TAGS="false"
+ACTION="enable"
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --message) MESSAGE="$2"; shift 2 ;;
+        --include-tags) INCLUDE_TAGS="true"; shift ;;
+        --disable) ACTION="disable"; shift ;;
+        *) usage ;;
+    esac
+done
+
 # Main logic
 if [ "$ACTION" = "disable" ]; then
     # Disable banner
@@ -74,4 +95,8 @@ else
 fi
 
 # Validate and reload SSH
-sshd -t && rc-service sshd restart
+if ! /usr/sbin/sshd -t; then
+    echo "❌ SSH configuration invalid. Check $SSHCFG."
+    exit 1
+fi
+restart_ssh
