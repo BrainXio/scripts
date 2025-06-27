@@ -4,7 +4,7 @@
 # Works on modern Ubuntu (20.04/22.04) and most systemd-based Linux distros.
 # -----------------------------------------------------------------------------
 
-set -euo pipefail
+set -eu
 
 # Install zsh and fail2ban quietly
 apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -yq zsh fail2ban
